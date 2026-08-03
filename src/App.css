@@ -1,108 +1,416 @@
-.app-container {
+/* Google Files Material Design Theme */
+:root {
+  --gf-bg: #f8f9fa;
+  --gf-surface: #ffffff;
+  --gf-primary: #1a73e8;
+  --gf-primary-hover: #185abc;
+  --gf-text: #202124;
+  --gf-text-secondary: #5f6368;
+  --gf-border: #dadce0;
+  --gf-hover: #f1f3f4;
+  --gf-selected: #e8f0fe;
+  
+  --fluent-selected-bg: var(--gf-selected);
+  --fluent-secondary-text: var(--gf-text-secondary);
+}
+
+body, html {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--gf-bg);
+  color: var(--gf-text);
+}
+
+.google-app-container {
   display: flex;
-  flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background-color: var(--fluent-bg);
+  overflow: hidden;
+  background-color: var(--gf-bg);
 }
 
-/* Titlebar spacer for the custom titlebar */
-.titlebar-spacer {
-  height: 40px;
-  width: 100%;
-  background-color: var(--fluent-titlebar-bg);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding-left: 12px;
-  font-size: 12px;
-}
-
-.titlebar-spacer .title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.titlebar-spacer .title img {
-  width: 16px;
-  height: 16px;
-}
-
-/* App Header (Command bar & Address bar) */
-.app-header {
-  height: 96px; /* 48px command bar + 48px address bar */
-  background-color: var(--fluent-bg);
-  border-bottom: 1px solid var(--fluent-border);
+/* Sidebar Navigation */
+.google-sidebar {
+  width: 80px;
+  background-color: var(--gf-surface);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  border-right: 1px solid var(--gf-border);
+  gap: 8px;
   flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.sidebar-logo {
+  margin-bottom: 24px;
   -webkit-app-region: no-drag;
 }
 
-.command-bar {
-  height: 48px;
+.nav-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 0 12px;
-  gap: 16px;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  color: var(--gf-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
 }
 
-.address-bar-container {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 8px;
+.nav-item:hover {
+  background-color: var(--gf-hover);
 }
 
-/* Main Content Area */
-.app-body {
-  display: flex;
+.nav-item.active {
+  background-color: var(--gf-selected);
+  color: var(--gf-primary);
+}
+
+.nav-item span {
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+/* Main Area */
+.google-main {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-/* Sidebar */
-.app-sidebar {
-  width: 250px;
-  background-color: var(--fluent-sidebar-bg);
-  border-right: 1px solid var(--fluent-border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-.sidebar-item {
-  padding: 8px 16px;
+.google-topbar {
+  height: 64px;
   display: flex;
   align-items: center;
+  padding: 0 24px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.search-box {
+  background-color: var(--gf-surface);
+  border-radius: 24px;
+  height: 48px;
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  margin: 0 auto;
+  -webkit-app-region: no-drag;
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  outline: none;
+  color: var(--gf-text);
+}
+
+.search-box input::placeholder {
+  color: var(--gf-text-secondary);
+}
+
+.google-content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 24px 24px;
+}
+
+.tab-content {
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Clean Tab */
+.clean-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 16px;
+}
+
+.storage-summary {
+  background-color: var(--gf-surface);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid var(--gf-border);
+}
+
+.storage-summary h2 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.storage-bar {
+  height: 12px;
+  background-color: var(--gf-hover);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.storage-used {
+  height: 100%;
+  background-color: var(--gf-primary);
+  border-radius: 6px;
+}
+
+.storage-summary p {
+  margin: 0;
+  color: var(--gf-text-secondary);
+  font-size: 14px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--gf-text);
+}
+
+.suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.suggestion-card {
+  background-color: var(--gf-surface);
+  border: 1px solid var(--gf-border);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.suggestion-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--gf-selected);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.suggestion-info {
+  flex: 1;
+}
+
+.suggestion-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.suggestion-info p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--gf-text-secondary);
+}
+
+.clean-btn {
+  background-color: var(--gf-primary);
+  color: white;
+  border: none;
+  border-radius: 16px;
+  padding: 8px 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.clean-btn:hover {
+  background-color: var(--gf-primary-hover);
+}
+
+/* Share Tab */
+.share-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.share-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.share-hero h2 {
+  margin: 24px 0 8px 0;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.share-hero p {
+  margin: 0 0 48px 0;
+  color: var(--gf-text-secondary);
+}
+
+.share-buttons {
+  display: flex;
+  gap: 24px;
+}
+
+.share-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 24px;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.share-btn.send {
+  background-color: var(--gf-selected);
+  color: var(--gf-primary);
+}
+
+.share-btn.receive {
+  background-color: #e6f4ea;
+  color: #137333;
+}
+
+.share-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Browse Tab & Dashboard */
+.browse-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  margin-bottom: 16px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--gf-text);
+}
+
+.icon-btn:hover {
+  background-color: var(--gf-hover);
+}
+
+.breadcrumb {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 16px;
+}
+
+.dashboard-section-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--gf-text);
+  margin-bottom: -8px;
+}
+
+.categories-grid, .collections-list, .storage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.category-card {
+  background-color: var(--gf-surface);
+  border: 1px solid var(--gf-border);
+  border-radius: 12px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
   cursor: pointer;
-  border-radius: 4px;
-  margin: 2px 8px;
+  transition: all 0.2s ease;
 }
 
-.sidebar-item:hover {
-  background-color: var(--fluent-control-hover);
+.category-card:hover {
+  background-color: var(--gf-hover);
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.2);
 }
 
-.sidebar-item.active {
-  background-color: var(--fluent-selected-bg);
+.category-card svg {
+  width: 32px;
+  height: 32px;
+  color: var(--gf-primary);
 }
 
-.sidebar-item svg {
-  width: 18px;
-  height: 18px;
-  fill: var(--fluent-accent);
+.category-card span {
+  font-size: 14px;
+  font-weight: 500;
 }
 
-/* Main View */
-.app-main {
-  flex: 1;
-  background-color: var(--fluent-bg);
-  overflow-y: auto;
+.storage-card {
+  background-color: var(--gf-surface);
+  border: 1px solid var(--gf-border);
+  border-radius: 12px;
   padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.storage-card:hover {
+  background-color: var(--gf-hover);
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.storage-name {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .file-grid {
@@ -115,14 +423,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px;
-  border-radius: 4px;
-  cursor: default;
+  padding: 12px 8px;
+  border-radius: 12px;
+  cursor: pointer;
   text-align: center;
+  border: 1px solid transparent;
 }
 
 .file-item:hover {
-  background-color: var(--fluent-control-hover);
+  background-color: var(--gf-hover);
+}
+
+.file-item.selected {
+  background-color: var(--gf-selected);
+  border-color: var(--gf-primary);
 }
 
 .file-item svg {
@@ -139,33 +453,4 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-/* Toolbar Buttons */
-.toolbar-btn {
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: var(--fluent-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 8px;
-  gap: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-}
-
-.toolbar-btn:hover {
-  background-color: var(--fluent-control-hover);
-}
-
-.toolbar-btn:active {
-  background-color: var(--fluent-control-active);
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }

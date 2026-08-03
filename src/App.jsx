@@ -3,7 +3,7 @@ import {
   Folder, File, HardDrive, Home, Star, Monitor, ChevronRight, 
   ArrowLeft, ArrowRight, ArrowUp, RotateCw, Search, Plus, 
   Scissors, Copy, ClipboardPaste, Trash2, Edit3, MoreHorizontal, LayoutGrid,
-  Image as ImageIcon, Music, Video, FileText, Download
+  Image as ImageIcon, Music, Video, FileText, Download, Sparkles, Share2, Shield, Smartphone
 } from 'lucide-react';
 import './App.css';
 
@@ -16,6 +16,7 @@ function App() {
   const [clipboard, setClipboard] = useState(null); // { type: 'copy'|'cut', path: string }
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [activeTab, setActiveTab] = useState('browse');
 
   const categories = [
     { name: 'Desktop', icon: <Monitor size={18} /> },
@@ -26,13 +27,16 @@ function App() {
     { name: 'Videos', icon: <Video size={18} /> },
   ];
 
+  const [storageStats, setStorageStats] = useState({ total: 100, used: 65, free: 35, capacity: '65%' });
+  const [suggestions, setSuggestions] = useState([]);
+
   useEffect(() => {
     if (window.electronAPI) {
-      window.electronAPI.getHomeDir().then(home => {
-        navigateTo(home);
-      });
+      navigateTo('This PC');
       window.electronAPI.getDrives().then(d => setDrives(d));
       window.electronAPI.getSpecialFolders().then(sf => setSpecialFolders(sf));
+      window.electronAPI.getStorageStats().then(s => setStorageStats(s));
+      window.electronAPI.getCleanSuggestions().then(s => setSuggestions(s));
     } else {
       navigateTo('C:\\Users\\MockUser');
       setFiles([
@@ -41,6 +45,12 @@ function App() {
       ]);
     }
   }, []);
+
+  const formatBytes = (bytes) => {
+    if (!bytes) return '0 B';
+    const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'], i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
 
   const loadFiles = async (dirPath) => {
     if (window.electronAPI) {
@@ -92,6 +102,15 @@ function App() {
 
   const handleNavUp = () => {
     if (!currentPath) return;
+    if (currentPath.startsWith('Category://')) {
+      const pathParts = currentPath.split('|');
+      if (pathParts.length > 1) {
+        if (pathParts[1] === 'Local' || pathParts[1] === 'Global') navigateTo('This PC');
+        else navigateTo(pathParts[1]); // Navigate back to the device root
+        return;
+      }
+    }
+    
     const parts = currentPath.split('\\');
     if (parts.length > 1) {
       parts.pop();
@@ -135,111 +154,186 @@ function App() {
     }
   };
 
-  return (
-    <div className="app-container">
-      <div className="titlebar-drag-region"></div>
-      <div className="titlebar-spacer">
-        <div className="title">
-          <Folder size={16} />
-          <span>File Explorer</span>
+  const handleCategoryClick = async (catName) => {
+    // Check if we are inside an MTP phone partition
+    if (currentPath.startsWith('This PC\\') && !currentPath.match(/^This PC\\[A-Z]:/i)) {
+      const parts = currentPath.split('\\');
+      if (parts.length >= 2) {
+        const deviceRoot = parts[0] + '\\' + parts[1];
+        // Trigger Category Aggregation View
+        navigateTo(`Category://${catName}|${deviceRoot}`);
+        return;
+      }
+    }
+    
+    // Default fallback to PC local folders
+    if (specialFolders[catName]) {
+      navigateTo(`Category://${catName}|Global`);
+    }
+  };
+
+  const renderCleanTab = () => (
+    <div className="tab-content clean-tab">
+      <div className="storage-summary">
+        <h2>Storage</h2>
+        <div className="storage-bar">
+          <div className="storage-used" style={{ width: storageStats.capacity }}></div>
+        </div>
+        <p>{formatBytes(storageStats.used)} used • {formatBytes(storageStats.free)} free</p>
+      </div>
+      
+      <h3 className="section-title">Clean suggestions</h3>
+      <div className="suggestions-list">
+        {suggestions.length > 0 ? suggestions.map(s => (
+          <div key={s.id} className="suggestion-card">
+            <div className="suggestion-icon">
+              {s.id === 'junk' ? <Trash2 size={24} color="#1a73e8" /> : <ImageIcon size={24} color="#1a73e8" />}
+            </div>
+            <div className="suggestion-info">
+              <h4>{s.type}</h4>
+              <p>{s.description}</p>
+            </div>
+            <button className="clean-btn">{s.action} {formatBytes(s.size)}</button>
+          </div>
+        )) : (
+          <p style={{ color: 'var(--gf-text-secondary)', marginTop: '8px' }}>Looking good! No suggestions at the moment.</p>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderShareTab = () => (
+    <div className="tab-content share-tab">
+      <div className="share-hero">
+        <Share2 size={80} color="#1a73e8" />
+        <h2>Nearby Share</h2>
+        <p>Fast, offline sharing with nearby devices</p>
+        
+        <div className="share-buttons">
+          <button className="share-btn send"><ArrowUp size={24} /> Send</button>
+          <button className="share-btn receive"><ArrowDown size={24} /> Receive</button>
         </div>
       </div>
+    </div>
+  );
 
-      <div className="app-header">
-        <div className="command-bar">
-          <button className="toolbar-btn"><Plus size={18} /> <span>New</span></button>
-          <div className="toolbar-separator" style={{ width: '1px', height: '24px', background: 'var(--fluent-border)', margin: '0 8px' }}></div>
-          <button className="toolbar-btn" onClick={handleCopy} disabled={!selectedFile}><Copy size={18} /></button>
-          <button className="toolbar-btn" onClick={handlePaste} disabled={!clipboard}><ClipboardPaste size={18} /></button>
-          <button className="toolbar-btn" onClick={handleDelete} disabled={!selectedFile}><Trash2 size={18} /></button>
-          <div className="toolbar-separator" style={{ width: '1px', height: '24px', background: 'var(--fluent-border)', margin: '0 8px' }}></div>
-          <button className="toolbar-btn"><LayoutGrid size={18} /> <span>View</span></button>
+  const renderBrowseTab = () => (
+    <div className="tab-content browse-tab">
+      {currentPath !== 'This PC' && (
+        <div className="browse-nav-bar">
+          <button className="icon-btn" onClick={handleNavUp}><ArrowLeft size={20} /></button>
+          <div className="breadcrumb">{currentPath}</div>
         </div>
-
-        <div className="address-bar-container">
-          <div className="nav-buttons" style={{ display: 'flex', gap: '4px' }}>
-            <button className="toolbar-btn" onClick={handleBack} disabled={historyIndex <= 0}><ArrowLeft size={16} /></button>
-            <button className="toolbar-btn" onClick={handleForward} disabled={historyIndex >= history.length - 1}><ArrowRight size={16} /></button>
-            <button className="toolbar-btn" onClick={handleNavUp}><ArrowUp size={16} /></button>
-            <button className="toolbar-btn" onClick={() => loadFiles(currentPath)}><RotateCw size={16} /></button>
-          </div>
-          
-          <div className="address-bar" style={{ 
-            flex: 1, 
-            display: 'flex', 
-            alignItems: 'center', 
-            background: 'var(--fluent-control-bg)',
-            border: '1px solid var(--fluent-border)',
-            borderRadius: '4px',
-            padding: '4px 8px',
-            gap: '8px'
-          }}>
-            <Monitor size={16} color="var(--fluent-secondary-text)" />
-            <ChevronRight size={16} color="var(--fluent-secondary-text)" />
-            <input 
-              type="text" 
-              value={currentPath} 
-              readOnly 
-              style={{ flex: 1, border: 'none', background: 'transparent', color: 'var(--fluent-text)', outline: 'none', fontFamily: 'inherit' }} 
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="app-body">
-        <div className="app-sidebar">
-          <div className="sidebar-section" style={{ padding: '8px 0' }}>
-            <div className="sidebar-item" onClick={() => navigateTo('This PC')}>
-              <Home size={18} /> <span>Home</span>
+      )}
+      
+      {currentPath === 'This PC' ? (
+        <div className="dashboard-container">
+          <div className="dashboard-section-title">Categories</div>
+          <div className="categories-grid">
+            <div className="category-card" onClick={() => navigateTo('Category://Downloads|Global')}>
+              <Download /> <span>Downloads</span>
+            </div>
+            <div className="category-card" onClick={() => navigateTo('Category://Pictures|Global')}>
+              <ImageIcon /> <span>Images</span>
+            </div>
+            <div className="category-card" onClick={() => navigateTo('Category://Videos|Global')}>
+              <Video /> <span>Videos</span>
+            </div>
+            <div className="category-card" onClick={() => navigateTo('Category://Audio|Global')}>
+              <Music /> <span>Audio</span>
+            </div>
+            <div className="category-card" onClick={() => navigateTo('Category://Documents|Global')}>
+              <FileText /> <span>Documents</span>
             </div>
           </div>
-          <div className="sidebar-separator" style={{ height: '1px', background: 'var(--fluent-border)', margin: '4px 16px' }}></div>
-          <div className="sidebar-section" style={{ padding: '8px 0' }}>
-            {categories.map(cat => (
-              <div 
-                key={cat.name} 
-                className={`sidebar-item ${currentPath === specialFolders[cat.name] ? 'active' : ''}`} 
-                onClick={() => navigateTo(specialFolders[cat.name])}
-              >
-                {cat.icon} <span>{cat.name}</span>
-              </div>
-            ))}
+          
+          <div className="dashboard-section-title">Collections</div>
+          <div className="collections-list">
+             <div className="storage-card">
+               <Star color="#fbbc04" fill="#fbbc04" />
+               <div className="storage-info"><span className="storage-name">Favorites</span></div>
+             </div>
+             <div className="storage-card">
+               <Shield color="#1a73e8" />
+               <div className="storage-info"><span className="storage-name">Safe folder</span></div>
+             </div>
           </div>
-          <div className="sidebar-separator" style={{ height: '1px', background: 'var(--fluent-border)', margin: '4px 16px' }}></div>
-          <div className="sidebar-section" style={{ padding: '8px 0' }}>
-            {drives.map(drive => (
-              <div 
-                key={drive.path} 
-                className={`sidebar-item ${currentPath.startsWith(drive.path) ? 'active' : ''}`}
-                onClick={() => navigateTo(drive.path)}
-              >
-                <HardDrive size={18} /> <span>{drive.name}</span>
+          
+          <div className="dashboard-section-title">Storage devices</div>
+          <div className="storage-list">
+            {files.map((file, idx) => (
+              <div key={idx} className="storage-card" onClick={() => handleDoubleClick(file)}>
+                {file.isMTP ? <Smartphone color="#1a73e8" /> : <HardDrive color="#1a73e8" />}
+                <div className="storage-info">
+                  <span className="storage-name">{file.name}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
+      ) : (
+        <div className="file-grid">
+          {files.map((file, idx) => (
+            <div 
+              key={idx} 
+              className={`file-item ${selectedFile === file ? 'selected' : ''}`}
+              onClick={() => setSelectedFile(file)}
+              onDoubleClick={() => handleDoubleClick(file)}
+            >
+              {file.isDirectory ? (
+                <Folder fill="#fbbc04" stroke="#fbbc04" />
+              ) : (
+                <File color="#5f6368" />
+              )}
+              <span className="file-name" title={file.name}>{file.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
-        <div className="app-main">
-          <div className="file-grid">
-            {files.map((file, idx) => (
-              <div 
-                key={idx} 
-                className={`file-item ${selectedFile === file ? 'selected' : ''}`}
-                onClick={() => setSelectedFile(file)}
-                onDoubleClick={() => handleDoubleClick(file)}
-                style={{
-                  backgroundColor: selectedFile === file ? 'var(--fluent-selected-bg)' : 'transparent',
-                }}
-              >
-                {file.isDirectory ? (
-                  <Folder fill="#F9CB44" stroke="#D19C10" />
-                ) : (
-                  <File color="var(--fluent-secondary-text)" />
-                )}
-                <span className="file-name" title={file.name}>{file.name}</span>
-              </div>
-            ))}
+  return (
+    <div className="google-app-container">
+      <div className="google-sidebar">
+        <div className="sidebar-logo">
+          <Folder fill="#1a73e8" stroke="#1a73e8" size={32} />
+        </div>
+        <div 
+          className={`nav-item ${activeTab === 'clean' ? 'active' : ''}`}
+          onClick={() => setActiveTab('clean')}
+        >
+          <Sparkles size={24} />
+          <span>Clean</span>
+        </div>
+        <div 
+          className={`nav-item ${activeTab === 'browse' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('browse'); navigateTo('This PC'); }}
+        >
+          <Search size={24} />
+          <span>Browse</span>
+        </div>
+        <div 
+          className={`nav-item ${activeTab === 'share' ? 'active' : ''}`}
+          onClick={() => setActiveTab('share')}
+        >
+          <Share2 size={24} />
+          <span>Share</span>
+        </div>
+      </div>
+
+      <div className="google-main">
+        <div className="google-topbar">
+          <div className="search-box">
+            <Search size={20} color="#5f6368" />
+            <input type="text" placeholder="Search in Files" />
           </div>
+        </div>
+
+        <div className="google-content-area">
+          {activeTab === 'clean' && renderCleanTab()}
+          {activeTab === 'browse' && renderBrowseTab()}
+          {activeTab === 'share' && renderShareTab()}
         </div>
       </div>
     </div>

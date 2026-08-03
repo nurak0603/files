@@ -57,8 +57,9 @@ const execAsync = util.promisify(exec);
 
 // Helper to run PowerShell
 async function runPowerShell(script) {
-  const singleLineScript = script.replace(/\n/g, ' ').replace(/\r/g, '');
-  const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${singleLineScript}"`);
+  const scriptBuffer = Buffer.from(script, 'utf16le');
+  const base64Script = scriptBuffer.toString('base64');
+  const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -EncodedCommand ${base64Script}`);
   return stdout;
 }
 
@@ -66,6 +67,176 @@ async function runPowerShell(script) {
 ipcMain.handle('fs:readdir', async (event, dirPath) => {
   try {
     const targetPath = dirPath || os.homedir();
+
+    if (targetPath.startsWith('Category://')) {
+      const [categoryUrl, deviceRoot] = targetPath.split('|');
+      const category = categoryUrl.replace('Category://', '');
+      
+      const foldersToScan = [];
+      if (category === 'Pictures') {
+        foldersToScan.push('DCIM', 'Pictures', 'DCIM\\Camera', 'WhatsApp\\Media\\WhatsApp Images', 'Android\\media\\com.whatsapp\\WhatsApp\\Media\\WhatsApp Images', 'Download');
+      } else if (category === 'Videos') {
+        foldersToScan.push('DCIM', 'Movies', 'Video', 'DCIM\\Camera', 'WhatsApp\\Media\\WhatsApp Video', 'Android\\media\\com.whatsapp\\WhatsApp\\Media\\WhatsApp Video', 'Download', 'Snapchat', 'Movies\\Telegram', 'Movies\\Instagram');
+      } else if (category === 'Audio' || category === 'Music') {
+        foldersToScan.push('Music', 'Audio', 'Recordings', 'WhatsApp\\Media\\WhatsApp Audio', 'Android\\media\\com.whatsapp\\WhatsApp\\Media\\WhatsApp Audio', 'Download');
+      } else if (category === 'Documents') {
+        foldersToScan.push('Documents', 'Download', 'WhatsApp\\Media\\WhatsApp Documents', 'Android\\media\\com.whatsapp\\WhatsApp\\Media\\WhatsApp Documents');
+      } else {
+        foldersToScan.push('Download');
+      }
+
+      let localFilesPromise = Promise.resolve([]);
+      if (deviceRoot === 'Local' || deviceRoot === 'Global') {
+        localFilesPromise = (async () => {
+          const homeDir = os.homedir();
+          const searchDirs = [];
+          if (category === 'Pictures') searchDirs.push(`${homeDir}\\Pictures`, `${homeDir}\\Downloads`);
+          else if (category === 'Videos') searchDirs.push(`${homeDir}\\Videos`, `${homeDir}\\Downloads`);
+          else if (category === 'Audio' || category === 'Music') searchDirs.push(`${homeDir}\\Music`, `${homeDir}\\Downloads`);
+          else if (category === 'Documents') searchDirs.push(`${homeDir}\\Documents`, `${homeDir}\\Downloads`);
+          else if (category === 'Downloads') searchDirs.push(`${homeDir}\\Downloads`);
+          
+          const exts = {
+            'Pictures': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic'],
+            'Videos': ['.mp4', '.mkv', '.avi', '.mov', '.webm'],
+            'Audio': ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'],
+            'Documents': ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt']
+          };
+          const validExts = exts[category] || [];
+          
+          const dirPromises = searchDirs.map(async (dir) => {
+            let dirFiles = [];
+            try {
+              const items = await fs.promises.readdir(dir, { withFileTypes: true });
+              for (const item of items) {
+                if (!item.isDirectory()) {
+                  const ext = path.extname(item.name).toLowerCase();
+                  if (validExts.length === 0 || validExts.includes(ext)) {
+                    dirFiles.push({
+                      name: item.name,
+                      path: path.join(dir, item.name),
+                      isDirectory: false,
+                      isFile: true,
+                      isSymlink: false,
+                      size: 0,
+                      mtime: null,
+                      ext: ext,
+                      isMTP: false
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore missing folders
+            }
+            return dirFiles;
+          });
+          
+          const results = await Promise.all(dirPromises);
+          return results.flat();
+        })();
+      }
+
+      let mtpFilesPromise = Promise.resolve([]);
+      if (deviceRoot === 'Global' || deviceRoot.startsWith('This PC\\')) {
+        mtpFilesPromise = (async () => {
+          let deviceTarget = deviceRoot === 'Global' ? '' : deviceRoot.replace('This PC\\', '').replace(/'/g, "''");
+          
+          let script = `
+            $shell = New-Object -ComObject Shell.Application;
+            $pc = $shell.Namespace(17);
+            $devices = @();
+            foreach ($item in $pc.Items()) {
+              if (-not $item.IsFileSystem) {
+                if ('${deviceTarget}' -eq '' -or $item.Name -eq '${deviceTarget}') {
+                  $devices += @{ Name = $item.Name; Folder = $item.GetFolder }
+                }
+              }
+            }
+            
+            $results = @();
+            if ($devices.Count -gt 0) {
+              $searchFolders = @(${foldersToScan.map(f => `'${f.replace(/'/g, "''")}'`).join(', ')});
+              
+              foreach ($deviceObj in $devices) {
+                $deviceName = $deviceObj.Name
+                $device = $deviceObj.Folder
+                foreach ($storage in $device.Items()) {
+                  if ($storage.IsFolder) {
+                    $storageFolder = $storage.GetFolder;
+                    
+                    foreach ($subpath in $searchFolders) {
+                      $parts = $subpath -split '\\\\';
+                      $curr = $storageFolder;
+                      $valid = $true;
+                      
+                      foreach ($part in $parts) {
+                         $found = $false;
+                         if (-not $curr) { $valid = $false; break; }
+                         foreach ($item in $curr.Items()) {
+                           if ($item.Name -eq $part) {
+                             $curr = $item.GetFolder;
+                             $found = $true;
+                             break;
+                           }
+                         }
+                         if (-not $found) { $valid = $false; break; }
+                      }
+                      
+                      if ($valid -and $curr) {
+                         foreach ($file in $curr.Items()) {
+                           if (-not $file.IsFolder) {
+                             $ext = [System.IO.Path]::GetExtension($file.Name).ToLower()
+                             $isValidExt = $true
+                             if ('${category}' -eq 'Pictures' -and $ext -ne '' -and $ext -notmatch '\\.(jpg|jpeg|png|gif|bmp|webp|heic)$') { $isValidExt = $false }
+                             if ('${category}' -eq 'Videos' -and $ext -ne '' -and $ext -notmatch '\\.(mp4|mkv|avi|mov|webm)$') { $isValidExt = $false }
+                             if (('${category}' -eq 'Audio' -or '${category}' -eq 'Music') -and $ext -ne '' -and $ext -notmatch '\\.(mp3|wav|ogg|m4a|flac|aac)$') { $isValidExt = $false }
+                             if ('${category}' -eq 'Documents' -and $ext -ne '' -and $ext -notmatch '\\.(pdf|doc|docx|xls|xlsx|txt)$') { $isValidExt = $false }
+                             
+                             if ($isValidExt) {
+                               $results += @{
+                                 Name = $file.Name
+                                 IsFolder = $file.IsFolder
+                                 IsFileSystem = $file.IsFileSystem
+                                 VirtualPath = 'This PC\\' + $deviceName + '\\' + $storage.Name + '\\' + $subpath + '\\' + $file.Name
+                               }
+                             }
+                           }
+                         }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            ConvertTo-Json -InputObject @($results) -Compress
+          `;
+          
+          const stdout = await runPowerShell(script);
+          const items = JSON.parse(stdout || '[]');
+          const itemArray = Array.isArray(items) ? items : (items.Name ? [items] : []);
+
+          const uniqueItemsMap = new Map();
+          itemArray.forEach(item => uniqueItemsMap.set(item.VirtualPath, item));
+          const uniqueItems = Array.from(uniqueItemsMap.values());
+
+          return uniqueItems.map(item => ({
+            name: item.Name,
+            path: item.VirtualPath,
+            isDirectory: item.IsFolder,
+            isFile: !item.IsFolder,
+            isSymlink: false,
+            size: 0,
+            mtime: null,
+            ext: item.Name && item.Name.includes('.') ? path.extname(item.Name).toLowerCase() : '',
+            isMTP: !item.IsFileSystem
+          }));
+        })();
+      }
+
+      const [localFiles, mtpFiles] = await Promise.all([localFilesPromise, mtpFilesPromise]);
+      return [...localFiles, ...mtpFiles];
+    }
 
     // Custom MTP Traversal for paths starting with 'This PC'
     if (targetPath.startsWith('This PC')) {
@@ -259,4 +430,82 @@ ipcMain.handle('fs:getSpecialFolders', () => {
     Music: path.join(home, 'Music'),
     Videos: path.join(home, 'Videos'),
   };
+});
+
+ipcMain.handle('fs:getStorageStats', async () => {
+  try {
+    const drives = await diskinfo.getDiskInfo();
+    const cDrive = drives.find(d => d.mounted === 'C:');
+    if (cDrive) {
+      return {
+        total: cDrive.blocks,
+        used: cDrive.used,
+        free: cDrive.available,
+        capacity: cDrive.capacity
+      };
+    }
+  } catch (e) {
+    console.error("Storage stats error:", e);
+  }
+  return { total: 0, used: 0, free: 0, capacity: '0%' };
+});
+
+ipcMain.handle('fs:getCleanSuggestions', async () => {
+  const suggestions = [];
+  
+  // 1. Junk Files (Temp dir)
+  try {
+    const tmpDir = os.tmpdir();
+    let junkSize = 0;
+    const files = await fs.promises.readdir(tmpDir, { withFileTypes: true });
+    const statPromises = files.filter(f => f.isFile()).map(f => 
+      fs.promises.stat(path.join(tmpDir, f.name)).catch(() => null)
+    );
+    const stats = await Promise.all(statPromises);
+    for (const stat of stats) {
+      if (stat) junkSize += stat.size;
+    }
+    
+    if (junkSize > 0) {
+      suggestions.push({
+        id: 'junk',
+        type: 'Junk files',
+        description: 'Temporary app files and cache',
+        size: junkSize,
+        action: 'Clean'
+      });
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  // 2. Large Downloads
+  try {
+    const downloads = path.join(os.homedir(), 'Downloads');
+    const files = await fs.promises.readdir(downloads, { withFileTypes: true });
+    let largeSize = 0;
+    const statPromises = files.filter(f => f.isFile()).map(f => 
+      fs.promises.stat(path.join(downloads, f.name)).catch(() => null)
+    );
+    const stats = await Promise.all(statPromises);
+    for (const stat of stats) {
+      if (stat && stat.size > 50 * 1024 * 1024) { // > 50MB
+        largeSize += stat.size;
+      }
+    }
+    
+    if (largeSize > 0) {
+      suggestions.push({
+        id: 'large',
+        type: 'Large files',
+        description: 'Files taking up the most space',
+        size: largeSize,
+        action: 'Select files'
+      });
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  return suggestions;
 });

@@ -8,4 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteFile: (target) => ipcRenderer.invoke('fs:delete', target),
   openFile: (target) => ipcRenderer.invoke('fs:openFile', target),
   getSpecialFolders: () => ipcRenderer.invoke('fs:getSpecialFolders'),
+  getStorageStats: () => ipcRenderer.invoke('fs:getStorageStats'),
+  getCleanSuggestions: () => ipcRenderer.invoke('fs:getCleanSuggestions'),
 });
