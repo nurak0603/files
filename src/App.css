@@ -164,3 +164,8 @@
 .toolbar-btn:active {
   background-color: var(--fluent-control-active);
 }
+
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
