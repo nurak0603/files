@@ -9,9 +9,34 @@
   --gf-border: #dadce0;
   --gf-hover: #f1f3f4;
   --gf-selected: #e8f0fe;
+  --google-red: #ea4335;
   
   --fluent-selected-bg: var(--gf-selected);
   --fluent-secondary-text: var(--gf-text-secondary);
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background-color: var(--gf-surface);
+  border: 1px solid var(--gf-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 8px 0;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.context-menu-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--gf-text);
+  transition: background-color 0.2s;
+}
+
+.context-menu-item:hover {
+  background-color: var(--gf-hover);
 }
 
 body, html {

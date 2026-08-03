@@ -57,10 +57,14 @@ const execAsync = util.promisify(exec);
 
 // Helper to run PowerShell
 async function runPowerShell(script) {
-  const scriptBuffer = Buffer.from(script, 'utf16le');
-  const base64Script = scriptBuffer.toString('base64');
-  const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -EncodedCommand ${base64Script}`);
-  return stdout;
+  const tmpPath = path.join(os.tmpdir(), `gf_mtp_${Date.now()}.ps1`);
+  await fs.promises.writeFile(tmpPath, script, 'utf8');
+  try {
+    const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpPath}"`, { maxBuffer: 1024 * 1024 * 50 });
+    return stdout;
+  } finally {
+    fs.promises.unlink(tmpPath).catch(() => {});
+  }
 }
 
 // IPC Handlers for File System Access
@@ -90,11 +94,39 @@ ipcMain.handle('fs:readdir', async (event, dirPath) => {
         localFilesPromise = (async () => {
           const homeDir = os.homedir();
           const searchDirs = [];
+          
+          try {
+            const stdout = await runPowerShell(`Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID | ConvertTo-Json`);
+            if (stdout) {
+              const data = JSON.parse(stdout);
+              const drives = Array.isArray(data) ? data : [data];
+              for (const d of drives) {
+                if (!d.DeviceID) continue;
+                const driveRoot = d.DeviceID + '\\';
+                if (category === 'Pictures') searchDirs.push(`${driveRoot}Pictures`, `${driveRoot}Downloads`, `${driveRoot}DCIM`);
+                else if (category === 'Videos') searchDirs.push(`${driveRoot}Videos`, `${driveRoot}Downloads`, `${driveRoot}Movies`);
+                else if (category === 'Audio' || category === 'Music') searchDirs.push(`${driveRoot}Music`, `${driveRoot}Downloads`, `${driveRoot}Audio`);
+                else if (category === 'Documents') searchDirs.push(`${driveRoot}Documents`, `${driveRoot}Downloads`);
+                else if (category === 'Downloads') searchDirs.push(`${driveRoot}Downloads`);
+              }
+            }
+          } catch(e) {}
+          
+          // Also append standard home folders just in case they aren't on C root
           if (category === 'Pictures') searchDirs.push(`${homeDir}\\Pictures`, `${homeDir}\\Downloads`);
           else if (category === 'Videos') searchDirs.push(`${homeDir}\\Videos`, `${homeDir}\\Downloads`);
           else if (category === 'Audio' || category === 'Music') searchDirs.push(`${homeDir}\\Music`, `${homeDir}\\Downloads`);
           else if (category === 'Documents') searchDirs.push(`${homeDir}\\Documents`, `${homeDir}\\Downloads`);
           else if (category === 'Downloads') searchDirs.push(`${homeDir}\\Downloads`);
+          else if (category === 'Favorites') {
+            const favDir = path.join(homeDir, 'Favorites');
+            if (!fs.existsSync(favDir)) fs.mkdirSync(favDir);
+            searchDirs.push(favDir);
+          } else if (category === 'SafeFolder') {
+            const safeDir = path.join(homeDir, 'SafeFolder');
+            if (!fs.existsSync(safeDir)) fs.mkdirSync(safeDir);
+            searchDirs.push(safeDir);
+          }
           
           const exts = {
             'Pictures': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic'],
@@ -212,25 +244,30 @@ ipcMain.handle('fs:readdir', async (event, dirPath) => {
             ConvertTo-Json -InputObject @($results) -Compress
           `;
           
-          const stdout = await runPowerShell(script);
-          const items = JSON.parse(stdout || '[]');
-          const itemArray = Array.isArray(items) ? items : (items.Name ? [items] : []);
+          try {
+            const stdout = await runPowerShell(script);
+            const items = JSON.parse(stdout || '[]');
+            const itemArray = Array.isArray(items) ? items : (items.Name ? [items] : []);
 
-          const uniqueItemsMap = new Map();
-          itemArray.forEach(item => uniqueItemsMap.set(item.VirtualPath, item));
-          const uniqueItems = Array.from(uniqueItemsMap.values());
+            const uniqueItemsMap = new Map();
+            itemArray.forEach(item => uniqueItemsMap.set(item.VirtualPath, item));
+            const uniqueItems = Array.from(uniqueItemsMap.values());
 
-          return uniqueItems.map(item => ({
-            name: item.Name,
-            path: item.VirtualPath,
-            isDirectory: item.IsFolder,
-            isFile: !item.IsFolder,
-            isSymlink: false,
-            size: 0,
-            mtime: null,
-            ext: item.Name && item.Name.includes('.') ? path.extname(item.Name).toLowerCase() : '',
-            isMTP: !item.IsFileSystem
-          }));
+            return uniqueItems.map(item => ({
+              name: item.Name,
+              path: item.VirtualPath,
+              isDirectory: item.IsFolder,
+              isFile: !item.IsFolder,
+              isSymlink: false,
+              size: 0,
+              mtime: null,
+              ext: item.Name && item.Name.includes('.') ? path.extname(item.Name).toLowerCase() : '',
+              isMTP: !item.IsFileSystem
+            }));
+          } catch(e) {
+            console.error("MTP PowerShell Error:", e);
+            return [];
+          }
         })();
       }
 
@@ -328,14 +365,20 @@ ipcMain.handle('fs:getHomeDir', () => 'This PC'); // Default to This PC to show 
 
 ipcMain.handle('fs:getDrives', async () => {
   try {
-    const drives = await diskinfo.getDiskInfo();
-    return drives.map(d => ({
-      name: d.mounted,
-      path: d.mounted + '\\'
-    }));
+    const script = `Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID, VolumeName | ConvertTo-Json`;
+    const stdout = await runPowerShell(script);
+    if (stdout) {
+      const data = JSON.parse(stdout);
+      const drives = Array.isArray(data) ? data : [data];
+      return drives.map(d => ({
+        name: d.VolumeName ? `${d.VolumeName} (${d.DeviceID})` : `Local Disk (${d.DeviceID})`,
+        path: d.DeviceID + '\\'
+      }));
+    }
   } catch (e) {
-    return [{ name: 'C:', path: 'C:\\' }];
+    console.error("Drives error:", e);
   }
+  return [{ name: 'Local Disk (C:)', path: 'C:\\' }];
 });
 
 // File Operations (Local files only for now)
@@ -434,14 +477,20 @@ ipcMain.handle('fs:getSpecialFolders', () => {
 
 ipcMain.handle('fs:getStorageStats', async () => {
   try {
-    const drives = await diskinfo.getDiskInfo();
-    const cDrive = drives.find(d => d.mounted === 'C:');
-    if (cDrive) {
+    const script = `Get-Volume -DriveLetter C | Select-Object Size, SizeRemaining | ConvertTo-Json`;
+    const stdout = await runPowerShell(script);
+    if (stdout) {
+      const data = JSON.parse(stdout);
+      const total = data.Size;
+      const free = data.SizeRemaining;
+      const used = total - free;
+      const capacity = Math.round((used / total) * 100) + '%';
+      
       return {
-        total: cDrive.blocks,
-        used: cDrive.used,
-        free: cDrive.available,
-        capacity: cDrive.capacity
+        total,
+        used,
+        free,
+        capacity
       };
     }
   } catch (e) {

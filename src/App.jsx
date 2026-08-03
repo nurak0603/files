@@ -17,6 +17,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [activeTab, setActiveTab] = useState('browse');
+  const [contextMenu, setContextMenu] = useState(null);
 
   const categories = [
     { name: 'Desktop', icon: <Monitor size={18} /> },
@@ -154,6 +155,22 @@ function App() {
     }
   };
 
+  const handleContextMenu = (e, file) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedFile(file);
+    setContextMenu({ x: e.pageX, y: e.pageY, type: 'file', file });
+  };
+
+  const handleBackgroundContextMenu = (e) => {
+    e.preventDefault();
+    if (currentPath !== 'This PC' && !currentPath.startsWith('Category://')) {
+      setContextMenu({ x: e.pageX, y: e.pageY, type: 'background' });
+    }
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
   const handleCategoryClick = async (catName) => {
     // Check if we are inside an MTP phone partition
     if (currentPath.startsWith('This PC\\') && !currentPath.match(/^This PC\\[A-Z]:/i)) {
@@ -249,11 +266,11 @@ function App() {
           
           <div className="dashboard-section-title">Collections</div>
           <div className="collections-list">
-             <div className="storage-card">
+             <div className="storage-card" onClick={() => navigateTo('Category://Favorites|Local')}>
                <Star color="#fbbc04" fill="#fbbc04" />
                <div className="storage-info"><span className="storage-name">Favorites</span></div>
              </div>
-             <div className="storage-card">
+             <div className="storage-card" onClick={() => navigateTo('Category://SafeFolder|Local')}>
                <Shield color="#1a73e8" />
                <div className="storage-info"><span className="storage-name">Safe folder</span></div>
              </div>
@@ -272,13 +289,14 @@ function App() {
           </div>
         </div>
       ) : (
-        <div className="file-grid">
+        <div className="file-grid" onContextMenu={handleBackgroundContextMenu}>
           {files.map((file, idx) => (
             <div 
               key={idx} 
               className={`file-item ${selectedFile === file ? 'selected' : ''}`}
-              onClick={() => setSelectedFile(file)}
+              onClick={(e) => { e.stopPropagation(); setSelectedFile(file); }}
               onDoubleClick={() => handleDoubleClick(file)}
+              onContextMenu={(e) => handleContextMenu(e, file)}
             >
               {file.isDirectory ? (
                 <Folder fill="#fbbc04" stroke="#fbbc04" />
@@ -294,7 +312,23 @@ function App() {
   );
 
   return (
-    <div className="google-app-container">
+    <div className="google-app-container" onClick={closeContextMenu}>
+      {contextMenu && (
+        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+          {contextMenu.type === 'file' ? (
+            <>
+              <div className="context-menu-item" onClick={() => { handleDoubleClick(contextMenu.file); closeContextMenu(); }}>Open</div>
+              <div className="context-menu-item" onClick={() => { handleCopy(); closeContextMenu(); }}>Copy</div>
+              <div className="context-menu-item" style={{ color: 'var(--google-red)' }} onClick={() => { handleDelete(); closeContextMenu(); }}>Delete</div>
+            </>
+          ) : (
+            <>
+              <div className="context-menu-item" onClick={() => { handlePaste(); closeContextMenu(); }}>Paste</div>
+              <div className="context-menu-item" onClick={() => { loadFiles(currentPath); closeContextMenu(); }}>Refresh</div>
+            </>
+          )}
+        </div>
+      )}
       <div className="google-sidebar">
         <div className="sidebar-logo">
           <Folder fill="#1a73e8" stroke="#1a73e8" size={32} />
