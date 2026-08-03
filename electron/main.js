@@ -56,15 +56,14 @@ import diskinfo from 'node-disk-info';
 const execAsync = util.promisify(exec);
 
 // Helper to run PowerShell
+const { execFile } = require('child_process');
+const execFileAsync = util.promisify(execFile);
+
 async function runPowerShell(script) {
-  const tmpPath = path.join(os.tmpdir(), `gf_mtp_${Date.now()}.ps1`);
-  await fs.promises.writeFile(tmpPath, script, 'utf8');
-  try {
-    const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpPath}"`, { maxBuffer: 1024 * 1024 * 50 });
-    return stdout;
-  } finally {
-    fs.promises.unlink(tmpPath).catch(() => {});
-  }
+  const scriptBuffer = Buffer.from(script, 'utf16le');
+  const base64Script = scriptBuffer.toString('base64');
+  const { stdout } = await execFileAsync('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', base64Script], { maxBuffer: 1024 * 1024 * 50 });
+  return stdout;
 }
 
 // IPC Handlers for File System Access
@@ -218,21 +217,25 @@ ipcMain.handle('fs:readdir', async (event, dirPath) => {
                       if ($valid -and $curr) {
                          foreach ($file in $curr.Items()) {
                            if (-not $file.IsFolder) {
-                             $ext = [System.IO.Path]::GetExtension($file.Name).ToLower()
-                             $isValidExt = $true
-                             if ('${category}' -eq 'Pictures' -and $ext -ne '' -and $ext -notmatch '\\.(jpg|jpeg|png|gif|bmp|webp|heic)$') { $isValidExt = $false }
-                             if ('${category}' -eq 'Videos' -and $ext -ne '' -and $ext -notmatch '\\.(mp4|mkv|avi|mov|webm)$') { $isValidExt = $false }
-                             if (('${category}' -eq 'Audio' -or '${category}' -eq 'Music') -and $ext -ne '' -and $ext -notmatch '\\.(mp3|wav|ogg|m4a|flac|aac)$') { $isValidExt = $false }
-                             if ('${category}' -eq 'Documents' -and $ext -ne '' -and $ext -notmatch '\\.(pdf|doc|docx|xls|xlsx|txt)$') { $isValidExt = $false }
-                             
-                             if ($isValidExt) {
-                               $results += @{
-                                 Name = $file.Name
-                                 IsFolder = $file.IsFolder
-                                 IsFileSystem = $file.IsFileSystem
-                                 VirtualPath = 'This PC\\' + $deviceName + '\\' + $storage.Name + '\\' + $subpath + '\\' + $file.Name
-                               }
-                             }
+                              $ext = $file.ExtendedProperty("System.FileExtension")
+                              if (-not $ext) { $ext = [System.IO.Path]::GetExtension($file.Name) }
+                              if ($ext) { $ext = $ext.ToLower() } else { $ext = '' }
+                              
+                              $isValidExt = $true
+                              if ('${category}' -eq 'Pictures' -and $ext -ne '' -and $ext -notmatch '\\.(jpg|jpeg|png|gif|bmp|webp|heic)$') { $isValidExt = $false }
+                              if ('${category}' -eq 'Videos' -and $ext -notmatch '\\.(mp4|mkv|avi|mov|webm)$') { $isValidExt = $false }
+                              if (('${category}' -eq 'Audio' -or '${category}' -eq 'Music') -and $ext -notmatch '\\.(mp3|wav|ogg|m4a|flac|aac)$') { $isValidExt = $false }
+                              if ('${category}' -eq 'Documents' -and $ext -notmatch '\\.(pdf|doc|docx|xls|xlsx|txt)$') { $isValidExt = $false }
+                              
+                              if ($isValidExt) {
+                                $results += @{
+                                  Name = $file.Name
+                                  Ext = $ext
+                                  IsFolder = $file.IsFolder
+                                  IsFileSystem = $file.IsFileSystem
+                                  VirtualPath = 'This PC\\' + $deviceName + '\\' + $storage.Name + '\\' + $subpath + '\\' + $file.Name
+                                }
+                              }
                            }
                          }
                       }
@@ -261,7 +264,7 @@ ipcMain.handle('fs:readdir', async (event, dirPath) => {
               isSymlink: false,
               size: 0,
               mtime: null,
-              ext: item.Name && item.Name.includes('.') ? path.extname(item.Name).toLowerCase() : '',
+              ext: item.Ext,
               isMTP: !item.IsFileSystem
             }));
           } catch(e) {
